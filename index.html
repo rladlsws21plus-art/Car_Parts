@@ -72,14 +72,14 @@
 
         <div class="form-group">
           <label for="modelSelect">차종 및 모델</label>
-          <select id="modelSelect" required>
+          <select id="modelSelect" onchange="handleModelChange()" required>
             <option value="">브랜드를 먼저 선택하세요</option>
           </select>
         </div>
 
         <div class="form-group full-width">
           <label for="yearInput">연식</label>
-          <input type="text" inputmode="numeric" id="yearInput" placeholder="예: 2024" maxlength="4" oninput="this.value=this.value.replace(/[^0-9]/g,'')" required>
+          <input type="text" inputmode="numeric" id="yearInput" placeholder="예: 2024" maxlength="4" oninput="handleYearChange(this)" required>
         </div>
 
         <!-- 단일 부품명 + 가격 통합 입력창 -->
@@ -176,6 +176,13 @@
 
   let vehicleData = []; 
   let partsData = [];
+  let isInitialLoad = true;
+
+  // 연식 로컬 저장소 복원
+  const savedYear = localStorage.getItem("lastSelectedYear");
+  if (savedYear) {
+    document.getElementById("yearInput").value = savedYear;
+  }
 
   // 모달 제어
   window.openModal = () => {
@@ -203,13 +210,18 @@
     }
   });
 
-  // 브랜드/모델 모달 내 엔터 키 처리
   window.handleEnterKey = (event, type) => {
     if (event.key === "Enter" && !event.isComposing) {
       event.preventDefault();
       if (type === "brand") window.addBrand();
       if (type === "model") window.addModel();
     }
+  };
+
+  // 연식 변경 시 localStorage 저장
+  window.handleYearChange = (el) => {
+    el.value = el.value.replace(/[^0-9]/g, '');
+    localStorage.setItem("lastSelectedYear", el.value);
   };
 
   // 차량 브랜드 실시간 동기화
@@ -236,7 +248,13 @@
   function updateBrandDropdowns() {
     const brandSelect = document.getElementById("brandSelect");
     const brandSelectorForModel = document.getElementById("brandSelectorForModel");
-    const prevSelectedPart = brandSelect.value;
+    
+    // 초기 로드 시 localStorage에서 이전 선택값을 가져옴
+    let prevSelectedBrand = brandSelect.value;
+    if (isInitialLoad) {
+      const savedBrand = localStorage.getItem("lastSelectedBrand");
+      if (savedBrand) prevSelectedBrand = savedBrand;
+    }
     const prevSelectedModelForm = brandSelectorForModel.value;
     
     let optionsHtml = '<option value="">선택하세요</option>';
@@ -248,17 +266,27 @@
     brandSelectorForModel.innerHTML = '<option value="">브랜드 선택</option>' + 
       vehicleData.map(v => `<option value="${v.id}">${v.brandName}</option>`).join('');
 
-    brandSelect.value = prevSelectedPart;
+    brandSelect.value = prevSelectedBrand;
     brandSelectorForModel.value = prevSelectedModelForm;
+    
     window.handleBrandChange();
+    isInitialLoad = false;
   }
 
+  // 브랜드 변경 시 모델 리스트 갱신 및 localStorage 저장
   window.handleBrandChange = () => {
-    const brandName = document.getElementById("brandSelect").value;
+    const brandSelect = document.getElementById("brandSelect");
+    const brandName = brandSelect.value;
     const modelSelect = document.getElementById("modelSelect");
     modelSelect.innerHTML = '<option value="">차종을 선택하세요</option>';
 
-    if (!brandName) return;
+    if (brandName) {
+      localStorage.setItem("lastSelectedBrand", brandName);
+    } else {
+      localStorage.removeItem("lastSelectedBrand");
+      localStorage.removeItem("lastSelectedModel");
+      return;
+    }
 
     const targetVehicle = vehicleData.find(v => v.brandName === brandName);
     if (targetVehicle && targetVehicle.models) {
@@ -268,6 +296,22 @@
         opt.textContent = model;
         modelSelect.appendChild(opt);
       });
+    }
+
+    // 이전에 선택했던 모델이 해당 브랜드 목록에 있으면 복원
+    const savedModel = localStorage.getItem("lastSelectedModel");
+    if (savedModel && targetVehicle && (targetVehicle.models || []).includes(savedModel)) {
+      modelSelect.value = savedModel;
+    }
+  };
+
+  // 모델 변경 시 localStorage 저장
+  window.handleModelChange = () => {
+    const modelName = document.getElementById("modelSelect").value;
+    if (modelName) {
+      localStorage.setItem("lastSelectedModel", modelName);
+    } else {
+      localStorage.removeItem("lastSelectedModel");
     }
   };
 
@@ -414,7 +458,7 @@
     }
   };
 
-  // 통합 입력 파싱 및 제출 처리 (한글 IME 유지)
+  // 통합 입력 파싱 및 제출 처리
   window.handlePartsSubmit = async (event) => {
     event.preventDefault();
 
@@ -442,6 +486,11 @@
       alert("부품명과 유효한 가격(숫자)을 모두 입력해주세요.\n(예: 앞 범퍼 185000)");
       return;
     }
+
+    // 작업 상태 보존 (localStorage 갱신)
+    localStorage.setItem("lastSelectedBrand", brand);
+    localStorage.setItem("lastSelectedModel", model);
+    localStorage.setItem("lastSelectedYear", year);
 
     // 입력창 비우고 포커스 유지
     inputEl.value = "";
