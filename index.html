@@ -17,8 +17,10 @@
   label { display: block; margin-bottom: 5px; color: #555; font-weight: 600; font-size: 14px; }
   select, input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
   
-  .btn-primary { width: 100%; padding: 12px; background-color: #2c3e50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; font-weight: bold; }
+  .btn-primary { width: 100%; padding: 12px; background-color: #2c3e50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; font-weight: bold; transition: background-color 0.2s ease; }
   .btn-primary:hover { background-color: #34495e; }
+  .btn-primary.success-state { background-color: #27ae60 !important; }
+  
   .btn-secondary { background-color: #7f8c8d; color: white; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }
   .btn-secondary:hover { background-color: #95a5a6; }
   .btn-warning { background-color: #f39c12; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 12px; margin-right: 4px; }
@@ -45,13 +47,6 @@
   .modal-header h2 { margin: 0; border-bottom: none; padding-bottom: 0; }
   .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #7f8c8d; line-height: 1; }
   .modal-close:hover { color: #333; }
-
-  /* 등록 완료 알림 팝업 */
-  .toast-modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); z-index: 2000; justify-content: center; align-items: center; }
-  .toast-modal-overlay.active { display: flex; }
-  .toast-box { background: #fff; padding: 24px 32px; border-radius: 8px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
-  .toast-box h3 { margin: 0 0 8px 0; color: #27ae60; font-size: 18px; }
-  .toast-box p { margin: 0 0 16px 0; color: #666; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -156,15 +151,6 @@
   </div>
 </div>
 
-<!-- 등록 완료 알림 팝업 (ESC 또는 확인으로 닫힘) -->
-<div class="toast-modal-overlay" id="toastModal" onclick="closeToastModal()">
-  <div class="toast-box" onclick="event.stopPropagation()">
-    <h3>✔ 부품 등록 완료</h3>
-    <p>부품 정보가 정상적으로 등록되었습니다.<br><strong style="color: #2c3e50;">ESC</strong>를 누르면 팝업이 닫히고 바로 부품명을 입력할 수 있습니다.</p>
-    <button type="button" class="btn-primary" style="padding: 8px 20px; width: auto;" onclick="closeToastModal()">확인 (ESC)</button>
-  </div>
-</div>
-
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { 
@@ -207,26 +193,11 @@
     if (e.target.id === "brandModal") window.closeModal();
   };
 
-  // 등록 완료 팝업 제어 및 ESC 닫기
-  window.showToastModal = () => {
-    document.getElementById("toastModal").classList.add("active");
-  };
-
-  window.closeToastModal = () => {
-    document.getElementById("toastModal").classList.remove("active");
-    const partNameInput = document.getElementById("partNameInput");
-    if (partNameInput) partNameInput.focus();
-  };
-
-  // 전역 키 이벤트 (ESC로 팝업 닫기)
+  // 모달 닫기용 ESC 이벤트
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
-      const toastModal = document.getElementById("toastModal");
       const brandModal = document.getElementById("brandModal");
-
-      if (toastModal && toastModal.classList.contains("active")) {
-        window.closeToastModal();
-      } else if (brandModal && brandModal.classList.contains("active")) {
+      if (brandModal && brandModal.classList.contains("active")) {
         window.closeModal();
       }
     }
@@ -451,13 +422,14 @@
     }
   };
 
-  // 부품 등록 (연식 유지, 부품명/가격만 초기화 및 포커스)
+  // 부품 등록 (ESC/팝업 없이 버튼 피드백 후 바로 한글 입력 유지)
   window.savePart = async () => {
     const brand = document.getElementById("brandSelect").value;
     const model = document.getElementById("modelSelect").value;
     const year = document.getElementById("yearInput").value.trim();
     const partNameInput = document.getElementById("partNameInput");
     const priceInput = document.getElementById("priceInput");
+    const saveBtn = document.getElementById("savePartBtn");
     
     const partName = partNameInput.value.trim();
     const price = priceInput.value.trim();
@@ -476,12 +448,23 @@
         createdAt: serverTimestamp()
       });
       
-      // 연식(yearInput)은 유지, 부품명과 가격만 초기화
+      // 연식 유지, 부품명/가격 초기화
       partNameInput.value = "";
       priceInput.value = "";
       
-      // 등록 알림 팝업 오픈 (ESC로 닫으면 바로 partNameInput 포커스)
-      window.showToastModal();
+      // 버튼 시각 피드백 (0.6초간 초록색 '✔ 등록 완료!')
+      saveBtn.classList.add("success-state");
+      const originalText = saveBtn.textContent;
+      saveBtn.textContent = "✔ 등록 완료!";
+      
+      setTimeout(() => {
+        saveBtn.classList.remove("success-state");
+        saveBtn.textContent = originalText;
+      }, 600);
+
+      // 팝업 없이 부품명 인풋으로 바로 포커스 (IME 한글 상태 유지)
+      partNameInput.focus();
+
     } catch (e) {
       alert("부품 등록 실패: " + e.message);
     }
