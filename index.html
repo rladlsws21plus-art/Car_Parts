@@ -178,7 +178,7 @@
   </div>
 </div>
 
-<!-- 모달 2: 부품 전체 정보 수정 모달 (신규 추가) -->
+<!-- 모달 2: 부품 전체 정보 수정 모달 -->
 <div class="modal-overlay" id="editPartModal" onclick="handleBackdropClick(event, 'editPartModal')">
   <div class="modal-content">
     <div class="modal-header">
@@ -228,6 +228,22 @@
   </div>
 </div>
 
+<!-- 모달 3: 중복 부품 감지 알림 모달 (덮어쓰기 or 취소만 제공) -->
+<div class="modal-overlay" id="duplicateModal" onclick="handleBackdropClick(event, 'duplicateModal')">
+  <div class="modal-content" style="max-width: 480px; text-align: center;">
+    <div class="modal-header" style="justify-content: center; border-bottom: none; padding-bottom: 0;">
+      <h2 style="color: #e67e22;">⚠️ 동일 부품 안내</h2>
+    </div>
+    
+    <div id="duplicateModalDesc" style="margin: 15px 0 20px; font-size: 14px; line-height: 1.6; color: #444;"></div>
+    
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <button type="button" class="btn-primary" style="background-color: #27ae60;" onclick="handleOverwrite()">기존 가격 덮어쓰기 (가격 업데이트)</button>
+      <button type="button" class="btn-secondary" style="padding: 10px;" onclick="closeDuplicateModal()">취소 (등록하지 않음)</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { 
@@ -253,6 +269,7 @@
   let vehicleData = []; 
   let partsData = [];
   let isInitialLoad = true;
+  let pendingDuplicateItem = null;
 
   // 연식 로컬 저장소 복원
   const savedYear = localStorage.getItem("lastSelectedYear");
@@ -260,13 +277,13 @@
     document.getElementById("yearInput").value = savedYear;
   }
 
-  // 가격 자동 콤마 포맷팅
+  // 가격 포맷팅
   window.formatPriceInput = (el) => {
     const rawVal = el.value.replace(/[^0-9]/g, '');
     el.value = rawVal ? Number(rawVal).toLocaleString() : '';
   };
 
-  // 모달 제어 함수
+  // 모달 제어
   window.openBrandModal = () => {
     document.getElementById("brandModal").classList.add("active");
     setTimeout(() => {
@@ -282,10 +299,18 @@
   window.closeEditPartModal = () => {
     document.getElementById("editPartModal").classList.remove("active");
   };
+
+  window.closeDuplicateModal = () => {
+    document.getElementById("duplicateModal").classList.remove("active");
+    pendingDuplicateItem = null;
+    const inputEl = document.getElementById("partAndPriceInput");
+    if (inputEl) inputEl.focus();
+  };
   
   window.handleBackdropClick = (e, modalId) => {
     if (e.target.id === modalId) {
-      document.getElementById(modalId).classList.remove("active");
+      if (modalId === 'duplicateModal') window.closeDuplicateModal();
+      else document.getElementById(modalId).classList.remove("active");
     }
   };
 
@@ -293,6 +318,7 @@
     if (e.key === "Escape") {
       window.closeBrandModal();
       window.closeEditPartModal();
+      window.closeDuplicateModal();
     }
   });
 
@@ -309,7 +335,7 @@
     localStorage.setItem("lastSelectedYear", el.value);
   };
 
-  // 차량 브랜드 실시간 동기화
+  // 실시간 동기화
   const vehicleQuery = query(vehicleCollection, orderBy("brandName", "asc"));
   onSnapshot(vehicleQuery, (snapshot) => {
     vehicleData = [];
@@ -321,7 +347,6 @@
     renderBrandModelHierarchy();
   });
 
-  // 부품 목록 실시간 동기화
   const partsQuery = query(partsCollection, orderBy("createdAt", "desc"));
   onSnapshot(partsQuery, (snapshot) => {
     partsData = [];
@@ -331,7 +356,6 @@
     window.filterParts();
   });
 
-  // 등록 폼 드롭다운 갱신
   function updateBrandDropdowns() {
     const brandSelect = document.getElementById("brandSelect");
     const brandSelectorForModel = document.getElementById("brandSelectorForModel");
@@ -359,7 +383,6 @@
     isInitialLoad = false;
   }
 
-  // 검색 영역 브랜드 드롭다운 갱신
   function updateSearchBrandDropdown() {
     const searchBrandFilter = document.getElementById("searchBrandFilter");
     const currentVal = searchBrandFilter.value;
@@ -373,7 +396,6 @@
     window.handleSearchBrandChange();
   }
 
-  // 검색 영역 브랜드 변경 시 모델 옵션 갱신
   window.handleSearchBrandChange = () => {
     const searchBrand = document.getElementById("searchBrandFilter").value;
     const searchModelFilter = document.getElementById("searchModelFilter");
@@ -396,7 +418,6 @@
     window.filterParts();
   };
 
-  // 검색 필터 초기화
   window.resetSearchFilters = () => {
     document.getElementById("searchBrandFilter").value = "";
     document.getElementById("searchModelFilter").innerHTML = '<option value="">전체 차종</option>';
@@ -492,7 +513,7 @@
     });
   }
 
-  // 브랜드 등록
+  // 브랜드 등록 / 수정 / 삭제
   window.addBrand = async () => {
     const input = document.getElementById("newBrandInput");
     const brandName = input.value.trim();
@@ -533,7 +554,7 @@
     }
   };
 
-  // 모델 등록
+  // 모델 등록 / 수정 / 삭제
   window.addModel = async () => {
     const vehicleDocId = document.getElementById("brandSelectorForModel").value;
     const modelInput = document.getElementById("newModelInput");
@@ -587,7 +608,7 @@
     }
   };
 
-  // 부품 등록
+  // 부품 등록 (완전 중복 시 덮어쓰기 안내)
   window.handlePartsSubmit = async (event) => {
     event.preventDefault();
 
@@ -595,10 +616,8 @@
     const model = document.getElementById("modelSelect").value;
     const year = document.getElementById("yearInput").value.trim();
     const inputEl = document.getElementById("partAndPriceInput");
-    const saveBtn = document.getElementById("savePartBtn");
     
     const fullText = inputEl.value.trim();
-
     if (!brand || !model || !year || !fullText) return;
 
     const lastSpaceIdx = fullText.lastIndexOf(" ");
@@ -615,6 +634,64 @@
       return;
     }
 
+    const numericYear = Number(year);
+    const numericPrice = Number(priceStr);
+
+    // 브랜드, 차종, 연식, 부품명이 완전 일치하는 기존 데이터 확인
+    const existing = partsData.find(p => 
+      p.brand === brand && 
+      p.model === model && 
+      Number(p.year) === numericYear && 
+      p.partName.trim() === partName
+    );
+
+    if (existing) {
+      pendingDuplicateItem = {
+        existingId: existing.id,
+        existingPrice: existing.price,
+        brand,
+        model,
+        year: numericYear,
+        partName,
+        price: numericPrice
+      };
+
+      document.getElementById("duplicateModalDesc").innerHTML = `
+        <strong>[${brand} ${model} (${numericYear}년식)]</strong><br>
+        <strong>'${partName}'</strong> 부품이 이미 등록되어 있어 중복 저장이 불가합니다.<br><br>
+        기존 등록 가격: <strong style="color: #e74c3c;">${Number(existing.price || 0).toLocaleString()}원</strong> ➔ 
+        새 입력 가격: <strong style="color: #27ae60;">${numericPrice.toLocaleString()}원</strong><br><br>
+        기존 데이터를 새 가격으로 덮어쓰시겠습니까?
+      `;
+      document.getElementById("duplicateModal").classList.add("active");
+      return;
+    }
+
+    // 중복 없으면 신규 등록
+    await executeSavePart(brand, model, numericYear, partName, numericPrice);
+  };
+
+  // 덮어쓰기 실행
+  window.handleOverwrite = async () => {
+    if (!pendingDuplicateItem) return;
+    const { existingId, price } = pendingDuplicateItem;
+
+    try {
+      await updateDoc(doc(db, "car_parts", existingId), { price });
+      triggerSuccessEffect("✔ 가격 덮어쓰기 완료!");
+    } catch (e) {
+      alert("가격 덮어쓰기 실패: " + e.message);
+    }
+
+    window.closeDuplicateModal();
+    const inputEl = document.getElementById("partAndPriceInput");
+    inputEl.value = "";
+    inputEl.focus();
+  };
+
+  // 실제 신규 등록 실행 헬퍼
+  async function executeSavePart(brand, model, year, partName, price) {
+    const inputEl = document.getElementById("partAndPriceInput");
     localStorage.setItem("lastSelectedBrand", brand);
     localStorage.setItem("lastSelectedModel", model);
     localStorage.setItem("lastSelectedYear", year);
@@ -622,29 +699,34 @@
     inputEl.value = "";
     inputEl.focus();
 
-    saveBtn.classList.add("success-state");
-    const originalText = saveBtn.textContent;
-    saveBtn.textContent = "✔ 등록 완료!";
-    setTimeout(() => {
-      saveBtn.classList.remove("success-state");
-      saveBtn.textContent = originalText;
-    }, 400);
+    triggerSuccessEffect("✔ 등록 완료!");
 
     try {
       await addDoc(partsCollection, {
         brand,
         model,
-        year: Number(year),
+        year,
         partName,
-        price: Number(priceStr),
+        price,
         createdAt: serverTimestamp()
       });
     } catch (e) {
       alert("부품 등록 실패: " + e.message);
     }
-  };
+  }
 
-  // 부품 수정 모달 열기 및 데이터 세팅
+  function triggerSuccessEffect(text) {
+    const saveBtn = document.getElementById("savePartBtn");
+    saveBtn.classList.add("success-state");
+    const originalText = saveBtn.textContent;
+    saveBtn.textContent = text;
+    setTimeout(() => {
+      saveBtn.classList.remove("success-state");
+      saveBtn.textContent = originalText;
+    }, 400);
+  }
+
+  // 부품 수정 모달 열기 및 세팅
   window.openEditPartModal = (id) => {
     const part = partsData.find(p => p.id === id);
     if (!part) return;
@@ -654,7 +736,6 @@
     document.getElementById("editPartNameInput").value = part.partName || "";
     document.getElementById("editPriceInput").value = part.price ? Number(part.price).toLocaleString() : "";
 
-    // 모달 내 브랜드 드롭다운 구성
     const editBrandSelect = document.getElementById("editBrandSelect");
     let optionsHtml = '<option value="">선택하세요</option>';
     vehicleData.forEach(v => {
@@ -663,14 +744,12 @@
     editBrandSelect.innerHTML = optionsHtml;
     editBrandSelect.value = part.brand || "";
 
-    // 브랜드에 따른 모델 구성
     window.handleEditBrandChange();
     document.getElementById("editModelSelect").value = part.model || "";
 
     document.getElementById("editPartModal").classList.add("active");
   };
 
-  // 수정 모달 브랜드 변경 시 모델 리스트 갱신
   window.handleEditBrandChange = () => {
     const brandName = document.getElementById("editBrandSelect").value;
     const modelSelect = document.getElementById("editModelSelect");
@@ -689,27 +768,40 @@
     }
   };
 
-  // 수정된 부품 정보 Firestore 저장
+  // 수정 저장 시에도 다른 항목과의 중복 검사
   window.saveEditedPart = async (e) => {
     e.preventDefault();
     const id = document.getElementById("editPartDocId").value;
     const brand = document.getElementById("editBrandSelect").value;
     const model = document.getElementById("editModelSelect").value;
-    const year = document.getElementById("editYearInput").value.trim();
+    const year = Number(document.getElementById("editYearInput").value.trim());
     const partName = document.getElementById("editPartNameInput").value.trim();
-    const rawPrice = document.getElementById("editPriceInput").value.replace(/[^0-9]/g, '');
+    const rawPrice = Number(document.getElementById("editPriceInput").value.replace(/[^0-9]/g, ''));
 
     if (!brand || !model || !year || !partName || !rawPrice) {
       return alert("모든 항목을 입력해주세요.");
+    }
+
+    // 자기 자신(id)을 제외한 다른 항목 중에 동일 데이터가 있는지 검증
+    const duplicate = partsData.find(p => 
+      p.id !== id && 
+      p.brand === brand && 
+      p.model === model && 
+      Number(p.year) === year && 
+      p.partName.trim() === partName
+    );
+
+    if (duplicate) {
+      return alert(`이미 동일한 부품 정보가 존재합니다.\n([${brand} ${model} ${year}년식] ${partName})`);
     }
 
     try {
       await updateDoc(doc(db, "car_parts", id), {
         brand,
         model,
-        year: Number(year),
+        year,
         partName,
-        price: Number(rawPrice)
+        price: rawPrice
       });
       window.closeEditPartModal();
     } catch (e) {
