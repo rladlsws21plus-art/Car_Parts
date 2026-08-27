@@ -59,38 +59,40 @@
       <button type="button" class="btn-secondary" onclick="openModal()">⚙️ 브랜드 / 차종 관리</button>
     </div>
 
-    <div class="form-grid">
-      <div class="form-group">
-        <label for="brandSelect">브랜드</label>
-        <select id="brandSelect" onchange="handleBrandChange()">
-          <option value="">선택하세요</option>
-        </select>
+    <form id="partsForm" onsubmit="handlePartsSubmit(event)">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="brandSelect">브랜드</label>
+          <select id="brandSelect" onchange="handleBrandChange()" required>
+            <option value="">선택하세요</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="modelSelect">차종 및 모델</label>
+          <select id="modelSelect" required>
+            <option value="">브랜드를 먼저 선택하세요</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="yearInput">연식</label>
+          <input type="number" id="yearInput" placeholder="예: 2024" required>
+        </div>
+
+        <div class="form-group">
+          <label for="partNameInput">부품명</label>
+          <input type="text" id="partNameInput" lang="ko" placeholder="예: 앞 범퍼 커버" required>
+        </div>
+
+        <div class="form-group full-width">
+          <label for="priceInput">가격 (원)</label>
+          <input type="number" id="priceInput" placeholder="예: 185000" required>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label for="modelSelect">차종 및 모델</label>
-        <select id="modelSelect">
-          <option value="">브랜드를 먼저 선택하세요</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="yearInput">연식</label>
-        <input type="number" id="yearInput" placeholder="예: 2024" onkeydown="handlePartInputEnter(event)">
-      </div>
-
-      <div class="form-group">
-        <label for="partNameInput">부품명</label>
-        <input type="text" id="partNameInput" placeholder="예: 앞 범퍼 커버" onkeydown="handlePartInputEnter(event)">
-      </div>
-
-      <div class="form-group full-width">
-        <label for="priceInput">가격 (원)</label>
-        <input type="number" id="priceInput" placeholder="예: 185000" onkeydown="handlePartInputEnter(event)">
-      </div>
-    </div>
-
-    <button type="button" class="btn-primary" id="savePartBtn" onclick="savePart()">부품 정보 등록 (Enter)</button>
+      <button type="submit" class="btn-primary" id="savePartBtn">부품 정보 등록 (Enter)</button>
+    </form>
   </div>
 
   <!-- 2. 부품 검색 및 목록 카드 -->
@@ -127,7 +129,7 @@
       <div class="form-group">
         <label>신규 브랜드 등록</label>
         <div style="display: flex; gap: 8px;">
-          <input type="text" id="newBrandInput" placeholder="예: 르노코리아" onkeydown="handleEnterKey(event, 'brand')">
+          <input type="text" id="newBrandInput" lang="ko" placeholder="예: 르노코리아" onkeydown="handleEnterKey(event, 'brand')">
           <button type="button" class="btn-secondary" style="white-space: nowrap;" onclick="addBrand()">브랜드 추가</button>
         </div>
       </div>
@@ -138,7 +140,7 @@
           <select id="brandSelectorForModel" style="flex: 1;">
             <option value="">브랜드 선택</option>
           </select>
-          <input type="text" id="newModelInput" placeholder="예: SM6" style="flex: 1;" onkeydown="handleEnterKey(event, 'model')">
+          <input type="text" id="newModelInput" lang="ko" placeholder="예: SM6" style="flex: 1;" onkeydown="handleEnterKey(event, 'model')">
           <button type="button" class="btn-secondary" style="white-space: nowrap;" onclick="addModel()">모델 추가</button>
         </div>
       </div>
@@ -193,7 +195,6 @@
     if (e.target.id === "brandModal") window.closeModal();
   };
 
-  // 모달 닫기용 ESC 이벤트
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       const brandModal = document.getElementById("brandModal");
@@ -203,20 +204,12 @@
     }
   });
 
-  // 브랜드/모델 모달 내 엔터 처리
+  // 브랜드/모델 모달 내 엔터 키 처리
   window.handleEnterKey = (event, type) => {
     if (event.key === "Enter" && !event.isComposing) {
       event.preventDefault();
       if (type === "brand") window.addBrand();
       if (type === "model") window.addModel();
-    }
-  };
-
-  // 부품 등록 인풋창 엔터 처리
-  window.handlePartInputEnter = (event) => {
-    if (event.key === "Enter" && !event.isComposing) {
-      event.preventDefault();
-      window.savePart();
     }
   };
 
@@ -422,8 +415,19 @@
     }
   };
 
-  // 부품 등록 (ESC/팝업 없이 버튼 피드백 후 바로 한글 입력 유지)
-  window.savePart = async () => {
+  // IME 한글 모드를 유지하는 안전한 값 초기화 함수
+  function safeClearInput(inputEl) {
+    inputEl.focus();
+    inputEl.select();
+    if (!document.execCommand('delete')) {
+      inputEl.value = '';
+    }
+  }
+
+  // 부품 폼 제출 처리 (한글 모드 유지)
+  window.handlePartsSubmit = async (event) => {
+    event.preventDefault();
+
     const brand = document.getElementById("brandSelect").value;
     const model = document.getElementById("modelSelect").value;
     const year = document.getElementById("yearInput").value.trim();
@@ -434,9 +438,20 @@
     const partName = partNameInput.value.trim();
     const price = priceInput.value.trim();
 
-    if (!brand || !model || !year || !partName || !price) {
-      return alert("브랜드, 모델, 연식, 부품명, 가격을 모두 입력해주세요.");
-    }
+    if (!brand || !model || !year || !partName || !price) return;
+
+    // UI 즉시 초기화 (포커스 루프를 끊지 않고 브라우저 선택 삭제 적용)
+    safeClearInput(priceInput);
+    safeClearInput(partNameInput);
+
+    // 버튼 알림 피드백
+    saveBtn.classList.add("success-state");
+    const originalText = saveBtn.textContent;
+    saveBtn.textContent = "✔ 등록 완료!";
+    setTimeout(() => {
+      saveBtn.classList.remove("success-state");
+      saveBtn.textContent = originalText;
+    }, 500);
 
     try {
       await addDoc(partsCollection, {
@@ -447,24 +462,6 @@
         price: Number(price),
         createdAt: serverTimestamp()
       });
-      
-      // 연식 유지, 부품명/가격 초기화
-      partNameInput.value = "";
-      priceInput.value = "";
-      
-      // 버튼 시각 피드백 (0.6초간 초록색 '✔ 등록 완료!')
-      saveBtn.classList.add("success-state");
-      const originalText = saveBtn.textContent;
-      saveBtn.textContent = "✔ 등록 완료!";
-      
-      setTimeout(() => {
-        saveBtn.classList.remove("success-state");
-        saveBtn.textContent = originalText;
-      }, 600);
-
-      // 팝업 없이 부품명 인풋으로 바로 포커스 (IME 한글 상태 유지)
-      partNameInput.focus();
-
     } catch (e) {
       alert("부품 등록 실패: " + e.message);
     }
