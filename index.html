@@ -37,7 +37,7 @@
   .tag-item span { margin-right: 6px; }
   .tag-item button { background: none; border: none; cursor: pointer; color: #e74c3c; font-weight: bold; padding: 0 2px; }
 
-  /* 모달 */
+  /* 브랜드 모달 */
   .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 1000; justify-content: center; align-items: center; }
   .modal-overlay.active { display: flex; }
   .modal-content { background: #fff; width: 90%; max-width: 700px; max-height: 85vh; border-radius: 8px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); overflow-y: auto; position: relative; }
@@ -45,6 +45,13 @@
   .modal-header h2 { margin: 0; border-bottom: none; padding-bottom: 0; }
   .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #7f8c8d; line-height: 1; }
   .modal-close:hover { color: #333; }
+
+  /* 등록 완료 알림 팝업 */
+  .toast-modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); z-index: 2000; justify-content: center; align-items: center; }
+  .toast-modal-overlay.active { display: flex; }
+  .toast-box { background: #fff; padding: 24px 32px; border-radius: 8px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+  .toast-box h3 { margin: 0 0 8px 0; color: #27ae60; font-size: 18px; }
+  .toast-box p { margin: 0 0 16px 0; color: #666; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -74,21 +81,21 @@
 
       <div class="form-group">
         <label for="yearInput">연식</label>
-        <input type="number" id="yearInput" placeholder="예: 2024">
+        <input type="number" id="yearInput" placeholder="예: 2024" onkeydown="handlePartInputEnter(event)">
       </div>
 
       <div class="form-group">
         <label for="partNameInput">부품명</label>
-        <input type="text" id="partNameInput" placeholder="예: 앞 범퍼 커버">
+        <input type="text" id="partNameInput" placeholder="예: 앞 범퍼 커버" onkeydown="handlePartInputEnter(event)">
       </div>
 
       <div class="form-group full-width">
         <label for="priceInput">가격 (원)</label>
-        <input type="number" id="priceInput" placeholder="예: 185000">
+        <input type="number" id="priceInput" placeholder="예: 185000" onkeydown="handlePartInputEnter(event)">
       </div>
     </div>
 
-    <button type="button" class="btn-primary" id="savePartBtn" onclick="savePart()">부품 정보 등록</button>
+    <button type="button" class="btn-primary" id="savePartBtn" onclick="savePart()">부품 정보 등록 (Enter)</button>
   </div>
 
   <!-- 2. 부품 검색 및 목록 카드 -->
@@ -149,6 +156,15 @@
   </div>
 </div>
 
+<!-- 등록 완료 알림 팝업 (ESC 또는 확인으로 닫힘) -->
+<div class="toast-modal-overlay" id="toastModal" onclick="closeToastModal()">
+  <div class="toast-box" onclick="event.stopPropagation()">
+    <h3>✔ 부품 등록 완료</h3>
+    <p>부품 정보가 정상적으로 등록되었습니다.<br><strong style="color: #2c3e50;">ESC</strong>를 누르면 팝업이 닫히고 바로 부품명을 입력할 수 있습니다.</p>
+    <button type="button" class="btn-primary" style="padding: 8px 20px; width: auto;" onclick="closeToastModal()">확인 (ESC)</button>
+  </div>
+</div>
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { 
@@ -156,7 +172,6 @@
     onSnapshot, query, orderBy, serverTimestamp, arrayUnion, arrayRemove 
   } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-  // 전달해주신 Firebase 설정값
   const firebaseConfig = {
     apiKey: "AIzaSyDNcse8edlzvWj_CMyz0B-w5G14UpN5ZDI",
     authDomain: "car-parts-afeb9.firebaseapp.com",
@@ -192,12 +207,45 @@
     if (e.target.id === "brandModal") window.closeModal();
   };
 
-  // 엔터 키 이벤트 처리
+  // 등록 완료 팝업 제어 및 ESC 닫기
+  window.showToastModal = () => {
+    document.getElementById("toastModal").classList.add("active");
+  };
+
+  window.closeToastModal = () => {
+    document.getElementById("toastModal").classList.remove("active");
+    const partNameInput = document.getElementById("partNameInput");
+    if (partNameInput) partNameInput.focus();
+  };
+
+  // 전역 키 이벤트 (ESC로 팝업 닫기)
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const toastModal = document.getElementById("toastModal");
+      const brandModal = document.getElementById("brandModal");
+
+      if (toastModal && toastModal.classList.contains("active")) {
+        window.closeToastModal();
+      } else if (brandModal && brandModal.classList.contains("active")) {
+        window.closeModal();
+      }
+    }
+  });
+
+  // 브랜드/모델 모달 내 엔터 처리
   window.handleEnterKey = (event, type) => {
     if (event.key === "Enter" && !event.isComposing) {
       event.preventDefault();
       if (type === "brand") window.addBrand();
       if (type === "model") window.addModel();
+    }
+  };
+
+  // 부품 등록 인풋창 엔터 처리
+  window.handlePartInputEnter = (event) => {
+    if (event.key === "Enter" && !event.isComposing) {
+      event.preventDefault();
+      window.savePart();
     }
   };
 
@@ -210,8 +258,6 @@
     });
     updateBrandDropdowns();
     renderBrandModelHierarchy();
-  }, (error) => {
-    console.error("차량 데이터 로딩 실패:", error);
   });
 
   // 부품 목록 실시간 동기화
@@ -222,8 +268,6 @@
       partsData.push({ id: docSnap.id, ...docSnap.data() });
     });
     window.filterParts();
-  }, (error) => {
-    console.error("부품 데이터 로딩 실패:", error);
   });
 
   function updateBrandDropdowns() {
@@ -407,16 +451,19 @@
     }
   };
 
-  // 부품 등록
+  // 부품 등록 (연식 유지, 부품명/가격만 초기화 및 포커스)
   window.savePart = async () => {
     const brand = document.getElementById("brandSelect").value;
     const model = document.getElementById("modelSelect").value;
     const year = document.getElementById("yearInput").value.trim();
-    const partName = document.getElementById("partNameInput").value.trim();
-    const price = document.getElementById("priceInput").value.trim();
+    const partNameInput = document.getElementById("partNameInput");
+    const priceInput = document.getElementById("priceInput");
+    
+    const partName = partNameInput.value.trim();
+    const price = priceInput.value.trim();
 
     if (!brand || !model || !year || !partName || !price) {
-      return alert("모든 항목을 입력해주세요.");
+      return alert("브랜드, 모델, 연식, 부품명, 가격을 모두 입력해주세요.");
     }
 
     try {
@@ -429,10 +476,12 @@
         createdAt: serverTimestamp()
       });
       
-      document.getElementById("yearInput").value = "";
-      document.getElementById("partNameInput").value = "";
-      document.getElementById("priceInput").value = "";
-      alert("부품 가격이 등록되었습니다.");
+      // 연식(yearInput)은 유지, 부품명과 가격만 초기화
+      partNameInput.value = "";
+      priceInput.value = "";
+      
+      // 등록 알림 팝업 오픈 (ESC로 닫으면 바로 partNameInput 포커스)
+      window.showToastModal();
     } catch (e) {
       alert("부품 등록 실패: " + e.message);
     }
@@ -460,7 +509,6 @@
     }
   };
 
-  // 부품 실시간 검색 필터
   window.filterParts = () => {
     const term = document.getElementById("searchInput").value.toLowerCase().trim();
     const filtered = partsData.filter(item => 
