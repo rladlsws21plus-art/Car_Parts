@@ -47,6 +47,11 @@
   .text-center { text-align: center; }
   .text-right { text-align: right; }
   
+  /* 정렬 헤더 스타일 추가 */
+  th.sortable { cursor: pointer; user-select: none; transition: background-color 0.15s; }
+  th.sortable:hover { background-color: #e9ecef; }
+  .sort-icon { font-size: 11px; color: #999; margin-left: 4px; }
+
   .tag-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   .tag-item { display: inline-flex; align-items: center; background: #edf2f7; border: 1px solid #cbd5e0; padding: 4px 10px; border-radius: 16px; font-size: 13px; }
   .tag-item span { margin-right: 6px; }
@@ -150,11 +155,11 @@
       <thead>
         <tr>
           <th class="text-center" style="width: 60px;">사진</th>
-          <th>브랜드</th>
-          <th>모델</th>
-          <th>연식</th>
-          <th>부품명</th>
-          <th class="text-right">가격</th>
+          <th class="sortable" onclick="handleSort('brand')">브랜드 <span id="sort-brand" class="sort-icon">⇅</span></th>
+          <th class="sortable" onclick="handleSort('model')">모델 <span id="sort-model" class="sort-icon">⇅</span></th>
+          <th class="sortable" onclick="handleSort('year')">연식 <span id="sort-year" class="sort-icon">⇅</span></th>
+          <th class="sortable" onclick="handleSort('partName')">부품명 <span id="sort-partName" class="sort-icon">⇅</span></th>
+          <th class="sortable text-right" onclick="handleSort('price')">가격 <span id="sort-price" class="sort-icon">⇅</span></th>
           <th class="text-center" style="width: 130px;">관리</th>
         </tr>
       </thead>
@@ -313,6 +318,9 @@
   let isInitialLoad = true;
   let pendingDuplicateItem = null;
 
+  // 정렬 상태 관리 (컬럼명, asc/desc)
+  let currentSort = { column: null, direction: 'asc' };
+
   // 연식 복원
   const savedYear = localStorage.getItem("lastSelectedYear");
   if (savedYear) {
@@ -449,6 +457,33 @@
     localStorage.setItem("lastSelectedYear", el.value);
   };
 
+  // 정렬 핸들러
+  window.handleSort = (column) => {
+    if (currentSort.column === column) {
+      currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+      currentSort.column = column;
+      currentSort.direction = 'asc';
+    }
+    updateSortIcons();
+    window.filterParts();
+  };
+
+  function updateSortIcons() {
+    const columns = ['brand', 'model', 'year', 'partName', 'price'];
+    columns.forEach(col => {
+      const iconEl = document.getElementById(`sort-${col}`);
+      if (!iconEl) return;
+      if (currentSort.column === col) {
+        iconEl.textContent = currentSort.direction === 'asc' ? '▲' : '▼';
+        iconEl.style.color = '#2c3e50';
+      } else {
+        iconEl.textContent = '⇅';
+        iconEl.style.color = '#999';
+      }
+    });
+  }
+
   // 실시간 동기화
   const vehicleQuery = query(vehicleCollection, orderBy("brandName", "asc"));
   onSnapshot(vehicleQuery, (snapshot) => {
@@ -537,6 +572,8 @@
     document.getElementById("searchModelFilter").innerHTML = '<option value="">전체 차종</option>';
     document.getElementById("searchModelFilter").value = "";
     document.getElementById("searchInput").value = "";
+    currentSort = { column: null, direction: 'asc' };
+    updateSortIcons();
     window.filterParts();
   };
 
@@ -722,7 +759,7 @@
     }
   };
 
-  // 부품 등록 (이미지 압축 처리 포함)
+  // 부품 등록
   window.handlePartsSubmit = async (event) => {
     event.preventDefault();
 
@@ -752,13 +789,11 @@
     const numericYear = Number(year);
     const numericPrice = Number(priceStr);
 
-    // 이미지 파일 압축
     let imageBase64 = null;
     if (imgInput.files && imgInput.files[0]) {
       imageBase64 = await compressImage(imgInput.files[0], 800, 0.7);
     }
 
-    // 중복 확인
     const existing = partsData.find(p => 
       p.brand === brand && 
       p.model === model && 
@@ -788,7 +823,6 @@
       return;
     }
 
-    // 중복 없으면 저장
     await executeSavePart(brand, model, numericYear, partName, numericPrice, imageBase64);
   };
 
@@ -814,7 +848,7 @@
     inputEl.focus();
   };
 
-  // 신규 등록 실행 헬퍼
+  // 신규 등록 실행
   async function executeSavePart(brand, model, year, partName, price, imageUrl) {
     const inputEl = document.getElementById("partAndPriceInput");
     localStorage.setItem("lastSelectedBrand", brand);
@@ -853,7 +887,7 @@
     }, 400);
   }
 
-  // 부품 수정 모달 열기 및 세팅
+  // 부품 수정 모달 열기
   window.openEditPartModal = (id) => {
     const part = partsData.find(p => p.id === id);
     if (!part) return;
@@ -864,7 +898,6 @@
     document.getElementById("editPriceInput").value = part.price ? Number(part.price).toLocaleString() : "";
     document.getElementById("editPartImageInput").value = "";
 
-    // 기존 이미지 세팅
     const existingImg = part.imageUrl || "";
     document.getElementById("editExistingImgBase64").value = existingImg;
     const previewImg = document.getElementById("editPreviewImg");
@@ -939,7 +972,6 @@
       return alert(`이미 동일한 부품 정보가 존재합니다.\n([${brand} ${model} ${year}년식] ${partName})`);
     }
 
-    // 신규 이미지 선택 시 교체
     if (imgInput.files && imgInput.files[0]) {
       existingImgBase64 = await compressImage(imgInput.files[0], 800, 0.7);
     }
@@ -968,13 +1000,13 @@
     }
   };
 
-  // 혼합 다중 조건 실시간 필터링
+  // 실시간 필터링 및 정렬 적용
   window.filterParts = () => {
     const brandFilter = document.getElementById("searchBrandFilter").value.trim();
     const modelFilter = document.getElementById("searchModelFilter").value.trim();
     const term = document.getElementById("searchInput").value.toLowerCase().trim();
 
-    const filtered = partsData.filter(item => {
+    let filtered = partsData.filter(item => {
       if (brandFilter && item.brand !== brandFilter) return false;
       if (modelFilter && item.model !== modelFilter) return false;
       if (term) {
@@ -987,6 +1019,26 @@
       return true;
     });
 
+    // 정렬 로직 적용
+    if (currentSort.column) {
+      filtered.sort((a, b) => {
+        let valA = a[currentSort.column] ?? '';
+        let valB = b[currentSort.column] ?? '';
+
+        if (currentSort.column === 'price' || currentSort.column === 'year') {
+          valA = Number(valA) || 0;
+          valB = Number(valB) || 0;
+          return currentSort.direction === 'asc' ? valA - valB : valB - valA;
+        } else {
+          valA = String(valA);
+          valB = String(valB);
+          return currentSort.direction === 'asc' 
+            ? valA.localeCompare(valB, 'ko') 
+            : valB.localeCompare(valA, 'ko');
+        }
+      });
+    }
+
     const tbody = document.querySelector("#partsTable tbody");
     tbody.innerHTML = "";
 
@@ -998,7 +1050,6 @@
     filtered.forEach(item => {
       const row = tbody.insertRow();
       
-      // 이미지 셀 렌더링
       const imgHtml = item.imageUrl 
         ? `<img src="${item.imageUrl}" class="table-thumb" title="클릭하여 원본 보기" onclick="openImageViewer('${item.imageUrl}')">`
         : `<span class="no-img-badge">사진없음</span>`;
